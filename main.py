@@ -70,9 +70,21 @@ def get_features(image, model, layers=None):
     return features
 
 def gram_matrix(tensor):
-   # tensor: Nfeatures x H x W ==> M = Nfeatures x Npixels with Npixel=HxW
-   ...
-   return gram
+    a, b, c, d = tensor.size()  # a=batch size(=1)
+    # b=number of feature maps
+    # (c,d)=dimensions of a f. map (N=c*d)
+
+    features = tensor.view(a * b, c * d)  # resise F_XL into \hat F_XL
+
+    G = torch.mm(features, features.t())  # compute the gram product
+
+    # we 'normalize' the values of the gram matrix
+    # by dividing by the number of element in each feature maps.
+    return G
+    #return G.div(a * b * c * d)
+
+
+
 
 if __name__ == '__main__':
 
@@ -90,6 +102,7 @@ if __name__ == '__main__':
 
 
     vgg = models.vgg19(pretrained=True).features
+    vgg = vgg.to(device)
 
     # freeze all VGG parameters since we're only optimizing the target image
     for param in vgg.parameters():
@@ -110,16 +123,27 @@ if __name__ == '__main__':
         features_target = get_features(target,vgg,None)
         print(i)
 
-    
         # the content loss
         loss_content= torch.mean((features_content["conv19"]-features_target["conv19"])**2)
  
         
-        # the style loss
-        loss_style = torch.mean((features_style["conv10"]-features_target["conv10"])**2) + torch.mean((features_style["conv5"]-features_target["conv5"])**2) + torch.mean((features_style["conv0"]-features_target["conv0"])**2)
+        # the style loss 
+
+        gram_style_10 = gram_matrix(features_style["conv10"])
+        gram_style_5 = gram_matrix(features_style["conv5"])
+        gram_style_0 = gram_matrix(features_style["conv0"])
+
+        gram_target_10 = gram_matrix(features_target["conv10"])
+        gram_target_5 = gram_matrix(features_target["conv5"])
+        gram_target_0 = gram_matrix(features_target["conv0"])
+
+        loss_style = torch.mean((gram_style_10-gram_target_10)**2) + torch.mean((gram_style_5-gram_target_5)**2) + torch.mean((gram_style_0-gram_target_0)**2)
         
         # calculate the *total* loss
-        total_loss=0.80*loss_style + 0.2*loss_content
+        total_loss=0.5*loss_style + 0.5*loss_content
+        print("loss_content",loss_content)
+        print("loss_style",loss_style)
+        print("total_loss",total_loss)
     
         # update your target image
         optimizer.zero_grad()
